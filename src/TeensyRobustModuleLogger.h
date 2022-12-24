@@ -6,7 +6,13 @@
 #include "SdFat.h"
 #include "internal/circular_buffer.hpp"
 #include <EEPROM.h>
-#include <kinetis.h>
+
+#ifdef __IMXRT1062__
+	// Teensy 4
+#else
+	// Teensy 3.1
+	#include <kinetis.h>
+#endif 
 
 /** Robust Teensy Logging Strategy with per-Module Log Levels
  *
@@ -412,8 +418,59 @@ class TeensyRobustModuleLogger final : public LoggerBase
 
 	/// Checks the kinetis SoC's reset reason registers and logs them
 	/// This should only be called during begin().
+
 	void log_reset_reason()
 	{
+#ifdef __IMXRT1062__	
+		uint32_t resetStatusReg = SRC_SRSR;
+		bool info = false;
+		
+		if (resetStatusReg & SRC_SRSR_TEMPSENSE_RST_B) {
+			LoggerBase::info("Low-voltage Detect Reset\n");
+			LoggerBase::info("Temperature Sensor Software Reset");
+			info = true;
+		}
+		if (resetStatusReg & SRC_SRSR_WDOG3_RST_B) {
+			LoggerBase::info("IC Watchdog3 Timeout Reset");
+			info = true;
+		}
+		if (resetStatusReg & SRC_SRSR_JTAG_SW_RST) {
+			LoggerBase::info("JTAG Software Reset");
+			info = true;
+		}
+		if (resetStatusReg & SRC_SRSR_JTAG_RST_B) {
+			LoggerBase::info("High-Z JTAG Reset");
+			info = true;
+		}
+		if (resetStatusReg & SRC_SRSR_WDOG_RST_B) {
+			LoggerBase::info("IC Watchdog Timeout Reset");
+			info = true;
+		}
+		if (resetStatusReg & SRC_SRSR_IPP_USER_RESET_B) {
+			LoggerBase::info("Power-up Sequence (Cold Reset Event)");
+			info = true;
+		}
+		if (resetStatusReg & SRC_SRSR_CSU_RESET_B) {
+			LoggerBase::info("Central Security Unit Reset");
+			info = true;
+		}
+		if (resetStatusReg & SRC_SRSR_LOCKUP_SYSRESETREQ) {
+			LoggerBase::info("CPU Lockup or Software Reset");
+			info = true;
+			/* Per datasheet: "SW needs to write a value to SRC_GPR5
+			 * before writing the SYSRESETREQ bit and use the SRC_GPR5
+			 * value to distinguish if the reset is caused by SYSRESETREQ
+			 * or CPU lockup."
+			 */
+		}
+		if (resetStatusReg & SRC_SRSR_IPP_RESET_B) {
+			LoggerBase::info("Power-up Sequence");
+			info = true;
+		}
+		if (!info) {
+			LoggerBase::info("No status bits set in SRC Reset Status Register");
+		}
+#else
 		auto srs0 = RCM_SRS0;
 		auto srs1 = RCM_SRS1;
 
@@ -470,6 +527,7 @@ class TeensyRobustModuleLogger final : public LoggerBase
 		{
 			LoggerBase::info("Core Lockup Event Reset\n");
 		}
+#endif
 	}
 
 	void set_filename()
